@@ -1,77 +1,52 @@
-var http = require("http");
-var express = require("express");
-var {
-  RtcTokenBuilder,
-  RtmTokenBuilder,
-  RtcRole,
-  RtmRole,
-} = require("agora-access-token");
+var dotenv = require("dotenv");
+const { runApp, closeApp } = require("./app");
+const initModule = require("./initModule");
 
-var PORT = process.env.PORT || 8080;
+const app = runApp();
 
-if (!(process.env.APP_ID && process.env.APP_CERTIFICATE)) {
-  throw new Error("You must define an APP_ID and APP_CERTIFICATE");
-}
-var appID = process.env.APP_ID;
-var appCertificate = process.env.APP_CERTIFICATE;
-
-const expirationTimeInSeconds = 3600; // 1 hour
-
-var role = RtcRole.PUBLISHER;
-
-var app = express();
-app.disable("x-powered-by");
-app.set("port", PORT);
-app.use(app.router);
-
-var generateRtcToken = function (req, resp) {
-  var currentTimestamp = Math.floor(Date.now() / 1000);
-  var privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
-  var channelName = req.query.channelName;
-  // use 0 if uid is not specified
-  var uid = req.query.uid || 0;
-  if (!channelName) {
-    return resp.status(400).json({ error: "channel name is required" }).send();
+(async () => {
+  // Config
+  if (process.env.NODE_ENV !== "production") {
+    dotenv.config({
+      path: "src/.env",
+    });
   }
 
-  var key = RtcTokenBuilder.buildTokenWithUid(
-    appID,
-    appCertificate,
-    channelName,
-    uid,
-    role,
-    privilegeExpiredTs
-  );
-
-  resp.header("Access-Control-Allow-Origin", "*");
-  //resp.header("Access-Control-Allow-Origin", "http://ip:port")
-  return resp.json({ key: key }).send();
-};
-
-var generateRtmToken = function (req, resp) {
-  var currentTimestamp = Math.floor(Date.now() / 1000);
-  var privilegeExpiredTs = currentTimestamp + expirationTimeInSeconds;
-  var account = req.query.account;
-  if (!account) {
-    return resp.status(400).json({ error: "account is required" }).send();
+  if (!(process.env.APP_ID && process.env.APP_CERTIFICATE)) {
+    throw new Error("You must define an APP_ID and APP_CERTIFICATE");
   }
 
-  var key = RtmTokenBuilder.buildToken(
-    appID,
-    appCertificate,
-    account,
-    RtmRole,
-    privilegeExpiredTs
-  );
+  initModule(app);
 
-  resp.header("Access-Control-Allow-Origin", "*");
-  //resp.header("Access-Control-Allow-Origin", "http://ip:port")
-  return resp.json({ key: key }).send();
-};
+  closeApp(app);
 
-app.get("/rtcToken", generateRtcToken);
-app.get("/rtmToken", generateRtmToken);
+  var port = process.env.PORT || 8080;
 
-http.createServer(app).listen(app.get("port"), function () {
-  console.log("[server] starts at " + app.get("port"));
-});
+  const server = app.listen(port, (err) => {
+    if (err) {
+      console.log(`[server] could not start http server on port: ${port}`);
+      return;
+    }
+    console.log(`[server] running on port: ${port}`);
+  });
+
+  // Handling Uncaught Exception
+  process.on("uncaughtException", (err) => {
+    console.log(`Error: ${err.message}`);
+    console.log(`[server] shutting down due to Uncaught Exception`);
+
+    server.close(() => {
+      process.exit(1);
+    });
+  });
+
+  // Unhandled Promise Rejection
+  process.on("unhandledRejection", (err) => {
+    console.log(`Error: ${err.message}`);
+    console.log(`[server] shutting down due to Unhandled Promise Rejection`);
+
+    server.close(() => {
+      process.exit(1);
+    });
+  });
+})();

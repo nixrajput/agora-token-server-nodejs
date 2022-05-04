@@ -22,7 +22,6 @@ var role = RtcRole.PUBLISHER;
 var app = express();
 app.disable("x-powered-by");
 app.set("port", PORT);
-app.use(express.favicon());
 app.use(app.router);
 
 var generateRtcToken = function (req, resp) {
